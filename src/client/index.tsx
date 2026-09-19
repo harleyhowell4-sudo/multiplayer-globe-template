@@ -72,7 +72,7 @@ function App() {
 			markers: [],
 			opacity: 0.7,
 			onRender: (state) => {
-				if (mouseDown) {
+				if (mouseX !== null && mouseY !== null && lastMouseX !== null && lastMouseY !== null) {
 					// If the mouse is down, rotate the globe based on the mouse movement
 					state.phi = phi + (mouseX - lastMouseX) * 0.01;
 					state.theta = theta + (mouseY - lastMouseY) * 0.01;

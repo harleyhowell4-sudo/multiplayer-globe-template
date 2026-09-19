@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import createGlobe, { type Arc, type Marker } from "cobe";
 import usePartySocket from "partysocket/react";
@@ -31,8 +31,6 @@ const connectionArcs = (markers: Marker[]): Arc[] => {
 
 function App() {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const [counter, setCounter] = useState(0);
-	const [showingDemo, setShowingDemo] = useState(true);
 	const positions = useRef(new Map<string, Marker>());
 	const markersChanged = useRef(true);
 
@@ -54,8 +52,6 @@ function App() {
 			}
 
 			markersChanged.current = true;
-			setCounter(positions.current.size);
-			setShowingDemo(positions.current.size === 0);
 		},
 	});
 
@@ -160,25 +156,7 @@ function App() {
 
 	return (
 		<main className="App">
-			<section className="intro">
-				<p className="eyebrow">Live visitor map</p>
-				<h1>The world is here.</h1>
-				<p className="status" aria-live="polite">
-					{showingDemo ? (
-						<><span>Preview</span> global connections.</>
-					) : (
-						<><span>{counter}</span> {counter === 1 ? "person is" : "people are"} connected now.</>
-					)}
-				</p>
-				<p className="hint">Drag the globe to explore.</p>
-			</section>
-
 			<canvas ref={canvasRef} aria-label="Interactive globe showing live visitor locations" />
-
-			<footer>
-				Powered by <a href="https://cobe.vercel.app/">Cobe</a> and{" "}
-				<a href="https://npmjs.com/package/partyserver/">PartyServer</a>
-			</footer>
 		</main>
 	);
 }

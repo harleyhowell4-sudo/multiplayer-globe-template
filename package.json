@@ -13,7 +13,7 @@
 		"publish": true
 	},
 	"dependencies": {
-		"cobe": "0.6.5",
+		"cobe": "^2.0.1",
 		"partyserver": "0.0.75",
 		"partysocket": "1.1.6",
 		"react": "19.2.1",

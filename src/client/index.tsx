@@ -2,143 +2,185 @@ import "./styles.css";
 
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import createGlobe from "cobe";
+import createGlobe, { type Arc, type Marker } from "cobe";
 import usePartySocket from "partysocket/react";
 
-// The type of messages we'll be receiving from the server
 import type { OutgoingMessage } from "../shared";
 
+const clamp = (value: number, minimum: number, maximum: number) =>
+	Math.min(Math.max(value, minimum), maximum);
+
+const demoMarkers: Marker[] = [
+	{ id: "san-francisco", location: [37.7749, -122.4194], size: 0.045, color: [0.4, 0.75, 1] },
+	{ id: "new-york", location: [40.7128, -74.006], size: 0.035 },
+	{ id: "london", location: [51.5072, -0.1276], size: 0.035 },
+	{ id: "tokyo", location: [35.6762, 139.6503], size: 0.035 },
+	{ id: "sydney", location: [-33.8688, 151.2093], size: 0.035 },
+	{ id: "sao-paulo", location: [-23.5505, -46.6333], size: 0.035 },
+];
+
+const connectionArcs = (markers: Marker[]): Arc[] => {
+	if (markers.length < 2) return [];
+	const hub = markers[0];
+	return markers.slice(1, 7).map((marker) => ({
+		from: hub.location,
+		to: marker.location,
+		color: [0.35, 0.6, 1],
+	}));
+};
+
 function App() {
-	// A reference to the canvas element where we'll render the globe
 	const canvasRef = useRef<HTMLCanvasElement>(null);
-	// The number of markers we're currently displaying
 	const [counter, setCounter] = useState(0);
-	// A map of marker IDs to their positions
-	// Note that we use a ref because the globe's `onRender` callback
-	// is called on every animation frame, and we don't want to re-render
-	// the component on every frame.
-	const positions = useRef<
-		Map<
-			string,
-			{
-				location: [number, number];
-				size: number;
-			}
-		>
-	>(new Map());
-	// Connect to the PartyServer server
+	const [showingDemo, setShowingDemo] = useState(true);
+	const positions = useRef(new Map<string, Marker>());
+	const markersChanged = useRef(true);
+
 	const socket = usePartySocket({
 		room: "default",
 		party: "globe",
-		onMessage(evt) {
-			const message = JSON.parse(evt.data as string) as OutgoingMessage;
+		onMessage(event) {
+			const message = JSON.parse(event.data as string) as OutgoingMessage;
 			if (message.type === "add-marker") {
-				// Add the marker to our map
 				positions.current.set(message.position.id, {
+					id: message.position.id,
 					location: [message.position.lat, message.position.lng],
-					size: message.position.id === socket.id ? 0.1 : 0.05,
+					size: message.position.id === socket.id ? 0.075 : 0.04,
+					color:
+						message.position.id === socket.id ? [0.4, 0.75, 1] : [0.95, 0.35, 0.55],
 				});
-				// Update the counter
-				setCounter((c) => c + 1);
 			} else {
-				// Remove the marker from our map
 				positions.current.delete(message.id);
-				// Update the counter
-				setCounter((c) => c - 1);
 			}
+
+			markersChanged.current = true;
+			setCounter(positions.current.size);
+			setShowingDemo(positions.current.size === 0);
 		},
 	});
 
 	useEffect(() => {
-		if (!canvasRef.current) return;
-
-		let phi = 0;
-		let isDragging = false;
-		let lastPointerX = 0;
 		const canvas = canvasRef.current;
+		if (!canvas) return;
 
-		const handlePointerDown = (event: PointerEvent) => {
-			isDragging = true;
-			lastPointerX = event.clientX;
-			canvas.setPointerCapture(event.pointerId);
-		};
-		const handlePointerMove = (event: PointerEvent) => {
-			if (!isDragging) return;
-			phi += (event.clientX - lastPointerX) * 0.01;
-			lastPointerX = event.clientX;
-		};
-		const handlePointerUp = (event: PointerEvent) => {
-			isDragging = false;
-			canvas.releasePointerCapture(event.pointerId);
+		const rotation = { phi: 0.4, theta: 0.15, velocity: 0.002 };
+		let dragging = false;
+		let lastPointer = { x: 0, y: 0 };
+		let frame = 0;
+		let globe: ReturnType<typeof createGlobe> | undefined;
+
+		const resize = () => {
+			const bounds = canvas.getBoundingClientRect();
+			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			const width = Math.max(1, Math.round(bounds.width * dpr));
+			const height = Math.max(1, Math.round(bounds.height * dpr));
+			if (canvas.width === width && canvas.height === height) return;
+			canvas.width = width;
+			canvas.height = height;
+			globe?.update({ width, height });
 		};
 
-		canvas.addEventListener("pointerdown", handlePointerDown);
-		canvas.addEventListener("pointermove", handlePointerMove);
-		canvas.addEventListener("pointerup", handlePointerUp);
-		canvas.addEventListener("pointercancel", handlePointerUp);
-
-		const globe = createGlobe(canvasRef.current, {
-			devicePixelRatio: 2,
-			width: 400 * 2,
-			height: 400 * 2,
-			phi: 0,
-			theta: 0,
+		resize();
+		globe = createGlobe(canvas, {
+			width: canvas.width,
+			height: canvas.height,
+			devicePixelRatio: 1,
+			phi: rotation.phi,
+			theta: rotation.theta,
 			dark: 1,
-			diffuse: 0.8,
-			mapSamples: 16000,
-			mapBrightness: 6,
-			baseColor: [0.3, 0.3, 0.3],
-			markerColor: [0.8, 0.1, 0.1],
-			glowColor: [0.2, 0.2, 0.2],
+			diffuse: 1.2,
+			mapSamples: 16_000,
+			mapBrightness: 5,
+			mapBaseBrightness: 0.08,
+			baseColor: [0.06, 0.08, 0.14],
+			markerColor: [0.95, 0.35, 0.55],
+			glowColor: [0.35, 0.55, 1],
 			markers: [],
-			opacity: 0.7,
-			onRender: (state) => {
-				// Called on every animation frame.
-				// `state` will be an empty object, return updated params.
-
-				// Get the current positions from our map
-				state.markers = [...positions.current.values()];
-
-				// Rotate the globe
-				state.phi = phi;
-			},
+			opacity: 0.95,
 		});
 
+		const observer = new ResizeObserver(resize);
+		observer.observe(canvas);
+
+		const render = () => {
+			if (!dragging) {
+				rotation.phi += rotation.velocity;
+				rotation.velocity += (0.002 - rotation.velocity) * 0.025;
+			}
+
+			const update: Parameters<NonNullable<typeof globe>["update"]>[0] = {
+				phi: rotation.phi,
+				theta: rotation.theta,
+			};
+			if (markersChanged.current) {
+				const markers = positions.current.size ? [...positions.current.values()] : demoMarkers;
+				update.markers = markers;
+				update.arcs = connectionArcs(markers);
+				markersChanged.current = false;
+			}
+			globe?.update(update);
+			frame = requestAnimationFrame(render);
+		};
+		render();
+
+		const pointerDown = (event: PointerEvent) => {
+			dragging = true;
+			lastPointer = { x: event.clientX, y: event.clientY };
+			canvas.setPointerCapture(event.pointerId);
+		};
+		const pointerMove = (event: PointerEvent) => {
+			if (!dragging) return;
+			const deltaX = event.clientX - lastPointer.x;
+			const deltaY = event.clientY - lastPointer.y;
+			rotation.phi += deltaX * 0.012;
+			rotation.theta = clamp(rotation.theta + deltaY * 0.008, -0.65, 0.65);
+			rotation.velocity = deltaX * 0.001;
+			lastPointer = { x: event.clientX, y: event.clientY };
+		};
+		const pointerUp = (event: PointerEvent) => {
+			dragging = false;
+			if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+		};
+
+		canvas.addEventListener("pointerdown", pointerDown);
+		canvas.addEventListener("pointermove", pointerMove);
+		canvas.addEventListener("pointerup", pointerUp);
+		canvas.addEventListener("pointercancel", pointerUp);
+
 		return () => {
-			canvas.removeEventListener("pointerdown", handlePointerDown);
-			canvas.removeEventListener("pointermove", handlePointerMove);
-			canvas.removeEventListener("pointerup", handlePointerUp);
-			canvas.removeEventListener("pointercancel", handlePointerUp);
-			globe.destroy();
+			cancelAnimationFrame(frame);
+			observer.disconnect();
+			canvas.removeEventListener("pointerdown", pointerDown);
+			canvas.removeEventListener("pointermove", pointerMove);
+			canvas.removeEventListener("pointerup", pointerUp);
+			canvas.removeEventListener("pointercancel", pointerUp);
+			globe?.destroy();
 		};
 	}, []);
 
 	return (
-		<div className="App">
-			<h1>Where's everyone at?</h1>
-			{counter !== 0 ? (
-				<p>
-					<b>{counter}</b> {counter === 1 ? "person" : "people"} connected.
+		<main className="App">
+			<section className="intro">
+				<p className="eyebrow">Live visitor map</p>
+				<h1>The world is here.</h1>
+				<p className="status" aria-live="polite">
+					{showingDemo ? (
+						<><span>Preview</span> global connections.</>
+					) : (
+						<><span>{counter}</span> {counter === 1 ? "person is" : "people are"} connected now.</>
+					)}
 				</p>
-			) : (
-				<p>&nbsp;</p>
-			)}
+				<p className="hint">Drag the globe to explore.</p>
+			</section>
 
-			{/* The canvas where we'll render the globe */}
-			<canvas
-				ref={canvasRef}
-				style={{ width: 400, height: 400, maxWidth: "100%", aspectRatio: 1 }}
-			/>
+			<canvas ref={canvasRef} aria-label="Interactive globe showing live visitor locations" />
 
-			{/* Let's give some credit */}
-			<p>
-				Powered by <a href="https://cobe.vercel.app/">🌏 Cobe</a>,{" "}
-				<a href="https://www.npmjs.com/package/phenomenon">Phenomenon</a> and{" "}
-				<a href="https://npmjs.com/package/partyserver/">🎈 PartyServer</a>
-			</p>
-		</div>
+			<footer>
+				Powered by <a href="https://cobe.vercel.app/">Cobe</a> and{" "}
+				<a href="https://npmjs.com/package/partyserver/">PartyServer</a>
+			</footer>
+		</main>
 	);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 createRoot(document.getElementById("root")!).render(<App />);

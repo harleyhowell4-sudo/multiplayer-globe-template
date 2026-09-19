@@ -7,9 +7,6 @@ import usePartySocket from "partysocket/react";
 
 import type { OutgoingMessage } from "../shared";
 
-const clamp = (value: number, minimum: number, maximum: number) =>
-	Math.min(Math.max(value, minimum), maximum);
-
 const demoMarkers: Marker[] = [
 	{ id: "san-francisco", location: [37.7749, -122.4194], size: 0.045, color: [0.4, 0.75, 1] },
 	{ id: "new-york", location: [40.7128, -74.006], size: 0.035 },
@@ -59,9 +56,12 @@ function App() {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
 
-		const rotation = { phi: 0.4, theta: 0.15, velocity: 0.002 };
+		const rotation = { phi: 0.4, theta: 0.15 };
+		const zoom = { scale: 1 };
 		let dragging = false;
 		let lastPointer = { x: 0, y: 0 };
+		const touchPointers = new Map<number, { x: number; y: number }>();
+		let pinchDistance = 0;
 		let frame = 0;
 		let globe: ReturnType<typeof createGlobe> | undefined;
 
@@ -99,14 +99,10 @@ function App() {
 		observer.observe(canvas);
 
 		const render = () => {
-			if (!dragging) {
-				rotation.phi += rotation.velocity;
-				rotation.velocity += (0.002 - rotation.velocity) * 0.025;
-			}
-
 			const update: Parameters<NonNullable<typeof globe>["update"]>[0] = {
 				phi: rotation.phi,
 				theta: rotation.theta,
+				scale: zoom.scale,
 			};
 			if (markersChanged.current) {
 				const markers = positions.current.size ? [...positions.current.values()] : demoMarkers;
@@ -120,28 +116,48 @@ function App() {
 		render();
 
 		const pointerDown = (event: PointerEvent) => {
+			touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			dragging = true;
 			lastPointer = { x: event.clientX, y: event.clientY };
 			canvas.setPointerCapture(event.pointerId);
 		};
 		const pointerMove = (event: PointerEvent) => {
 			if (!dragging) return;
+			if (touchPointers.has(event.pointerId)) {
+				touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+				if (touchPointers.size === 2) {
+					const [first, second] = [...touchPointers.values()];
+					const distance = Math.hypot(first.x - second.x, first.y - second.y);
+					if (pinchDistance) zoom.scale = Math.max(0.7, Math.min(2.2, zoom.scale * (distance / pinchDistance)));
+					pinchDistance = distance;
+					return;
+				}
+			}
 			const deltaX = event.clientX - lastPointer.x;
 			const deltaY = event.clientY - lastPointer.y;
 			rotation.phi += deltaX * 0.012;
-			rotation.theta = clamp(rotation.theta + deltaY * 0.008, -0.65, 0.65);
-			rotation.velocity = deltaX * 0.001;
+			rotation.theta = Math.max(
+				-Math.PI / 2,
+				Math.min(Math.PI / 2, rotation.theta + deltaY * 0.008),
+			);
 			lastPointer = { x: event.clientX, y: event.clientY };
 		};
 		const pointerUp = (event: PointerEvent) => {
+			touchPointers.delete(event.pointerId);
+			pinchDistance = 0;
 			dragging = false;
 			if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+		};
+		const wheel = (event: WheelEvent) => {
+			event.preventDefault();
+			zoom.scale = Math.max(0.7, Math.min(2.2, zoom.scale - event.deltaY * 0.0015));
 		};
 
 		canvas.addEventListener("pointerdown", pointerDown);
 		canvas.addEventListener("pointermove", pointerMove);
 		canvas.addEventListener("pointerup", pointerUp);
 		canvas.addEventListener("pointercancel", pointerUp);
+		canvas.addEventListener("wheel", wheel, { passive: false });
 
 		return () => {
 			cancelAnimationFrame(frame);
@@ -150,6 +166,7 @@ function App() {
 			canvas.removeEventListener("pointermove", pointerMove);
 			canvas.removeEventListener("pointerup", pointerUp);
 			canvas.removeEventListener("pointercancel", pointerUp);
+			canvas.removeEventListener("wheel", wheel);
 			globe?.destroy();
 		};
 	}, []);

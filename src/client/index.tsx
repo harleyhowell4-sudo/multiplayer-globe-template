@@ -88,9 +88,9 @@ function App() {
 			mapSamples: 16_000,
 			mapBrightness: 5,
 			mapBaseBrightness: 0.08,
-			baseColor: [0.06, 0.08, 0.14],
+			baseColor: [0, 255, 0],
 			markerColor: [0.95, 0.35, 0.55],
-			glowColor: [0.35, 0.55, 1],
+			glowColor: [0.35, 255, 1],
 			markers: [],
 			opacity: 0.95,
 		});

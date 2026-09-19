@@ -48,3 +48,12 @@ a {
 	text-underline-offset: 3px;
 	text-decoration-color: #555;
 }
+
+canvas {
+	cursor: grab;
+	touch-action: none;
+}
+
+canvas:active {
+	cursor: grabbing;
+}

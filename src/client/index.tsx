@@ -52,9 +52,30 @@ function App() {
 	useEffect(() => {
 		if (!canvasRef.current) return;
 
-		// The angle of rotation of the globe
-		// We'll update this on every frame to make the globe spin
 		let phi = 0;
+		let isDragging = false;
+		let lastPointerX = 0;
+		const canvas = canvasRef.current;
+
+		const handlePointerDown = (event: PointerEvent) => {
+			isDragging = true;
+			lastPointerX = event.clientX;
+			canvas.setPointerCapture(event.pointerId);
+		};
+		const handlePointerMove = (event: PointerEvent) => {
+			if (!isDragging) return;
+			phi += (event.clientX - lastPointerX) * 0.01;
+			lastPointerX = event.clientX;
+		};
+		const handlePointerUp = (event: PointerEvent) => {
+			isDragging = false;
+			canvas.releasePointerCapture(event.pointerId);
+		};
+
+		canvas.addEventListener("pointerdown", handlePointerDown);
+		canvas.addEventListener("pointermove", handlePointerMove);
+		canvas.addEventListener("pointerup", handlePointerUp);
+		canvas.addEventListener("pointercancel", handlePointerUp);
 
 		const globe = createGlobe(canvasRef.current, {
 			devicePixelRatio: 2,
@@ -72,11 +93,6 @@ function App() {
 			markers: [],
 			opacity: 0.7,
 			onRender: (state) => {
-				if (mouseX !== null && mouseY !== null && lastMouseX !== null && lastMouseY !== null) {
-					// If the mouse is down, rotate the globe based on the mouse movement
-					state.phi = phi + (mouseX - lastMouseX) * 0.01;
-					state.theta = theta + (mouseY - lastMouseY) * 0.01;
-				}
 				// Called on every animation frame.
 				// `state` will be an empty object, return updated params.
 
@@ -85,11 +101,14 @@ function App() {
 
 				// Rotate the globe
 				state.phi = phi;
-				phi += 0.01;
 			},
 		});
 
 		return () => {
+			canvas.removeEventListener("pointerdown", handlePointerDown);
+			canvas.removeEventListener("pointermove", handlePointerMove);
+			canvas.removeEventListener("pointerup", handlePointerUp);
+			canvas.removeEventListener("pointercancel", handlePointerUp);
 			globe.destroy();
 		};
 	}, []);

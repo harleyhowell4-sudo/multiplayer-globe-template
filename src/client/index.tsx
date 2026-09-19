@@ -91,7 +91,7 @@ function App() {
 			baseColor: [0, 255, 0],
 			markerColor: [0.95, 0.35, 0.55],
 			glowColor: [0.35, 0.6, 1],
-			markers: [],
+			markers: [demoMarkers[0]],
 			opacity: 0.95,
 		});
 
